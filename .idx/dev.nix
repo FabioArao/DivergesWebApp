@@ -3,6 +3,11 @@
 { pkgs, ... }: {
   # Which nixpkgs channel to use.
   channel = "stable-23.11"; # or "unstable"
+  services = {
+    docker = {
+      enable = true;
+    };
+  };
 
   # Use https://search.nixos.org/packages to find packages
   packages = [
