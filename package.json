@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "@firebase/auth": "^1.8.0",
+    "@headlessui/react": "^2.2.0",
+    "axios": "^1.7.7",
+    "firebase": "^11.0.1",
+    "react-query": "^3.39.3"
+  }
+}
