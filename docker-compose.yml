@@ -24,7 +24,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      - DATABASE_URL=postgressql://user:password@db:5432/divergesapp
+      - DATABASE_URL=postgresql://user:password@db:5432/divergesapp
     depends_on:
       - db
 
@@ -37,7 +37,7 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=divergesapp
     volumes:
-      - postgres_data:/var/lib/postgressql/data
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
   postgres_data:

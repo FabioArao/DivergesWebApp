@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useRouter } from 'next/router';
+import { redirect } from 'next/navigation';
 import { auth } from '@/config/firebase';
 import { 
   signInWithEmailAndPassword,
@@ -15,7 +15,6 @@ export default function LoginForm() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +27,7 @@ export default function LoginForm() {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-      router.push('/dashboard');
+      redirect('/dashboard');
     } catch (error) {
       setError(getErrorMessage(error as AuthError));
     } finally {
@@ -43,7 +42,7 @@ export default function LoginForm() {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
-      router.push('/dashboard');
+      redirect('/dashboard');
     } catch (error) {
       setError(getErrorMessage(error as AuthError));
     } finally {
