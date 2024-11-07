@@ -21,6 +21,11 @@ backend/dist/
 frontend/.env
 backend/.env
 
+# Firebase credentials
+*.firebase*
+*-firebase-adminsdk-*.json
+firebase-credentials.json
+
 # Virtual environments
 venv/
 env/
@@ -53,9 +58,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Firebase
-*.firebase/
-
 # Uploads and media
 uploads/
 media/
@@ -67,3 +69,15 @@ media/
 # Miscellaneous
 .git
 *.pem
+
+# Sensitive configuration
+**/config/secrets.py
+**/config/local_settings.py
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.*.kate-swp
+.swp.*
