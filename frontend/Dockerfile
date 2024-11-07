@@ -7,13 +7,19 @@ FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
+# Create npm cache directory
+RUN mkdir -p /home/node/.npm
+ENV npm_config_cache=/home/node/.npm
+
 # Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm config set cache /home/node/.npm && \
+    npm ci --prefer-offline --no-audit
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
+COPY --from=deps /home/node/.npm /home/node/.npm
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 

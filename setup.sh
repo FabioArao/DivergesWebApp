@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# DivergesApp Setup Script
+# DivergesApp Setup and Management Script
 
 # Color codes
 GREEN='\033[0;32m'
@@ -12,6 +12,18 @@ NC='\033[0m' # No Color
 check_prerequisites() {
     echo -e "${YELLOW}Checking prerequisites...${NC}"
     
+    # Check Docker
+    if ! command -v docker &> /dev/null; then
+        echo -e "${RED}Docker is not installed. Please install Docker and Docker Compose.${NC}"
+        exit 1
+    fi
+    
+    # Check Docker Compose
+    if ! command -v docker-compose &> /dev/null; then
+        echo -e "${RED}Docker Compose is not installed. Please install Docker Compose.${NC}"
+        exit 1
+    fi
+    
     # Check Python
     if ! command -v python3 &> /dev/null; then
         echo -e "${RED}Python 3.10+ is required but not installed.${NC}"
@@ -21,12 +33,6 @@ check_prerequisites() {
     # Check Node.js
     if ! command -v node &> /dev/null; then
         echo -e "${RED}Node.js 18+ is required but not installed.${NC}"
-        exit 1
-    fi
-    
-    # Check Docker
-    if ! command -v docker &> /dev/null; then
-        echo -e "${RED}Docker is required but not installed.${NC}"
         exit 1
     fi
     
@@ -102,6 +108,14 @@ run_dev_servers() {
 # Docker development
 run_docker_dev() {
     echo -e "${YELLOW}Starting Docker development environment...${NC}"
+    
+    # Ensure environment files exist
+    create_env_files
+    
+    # Prune Docker system to free up space
+    docker system prune -f
+    
+    # Build and start containers
     docker-compose up --build
 }
 
@@ -110,7 +124,6 @@ main() {
     echo -e "${GREEN}DivergesApp Setup Script${NC}"
     
     check_prerequisites
-    create_env_files
     
     # Prompt for setup type
     echo "Choose setup method:"
@@ -120,6 +133,7 @@ main() {
     
     case $choice in
         1)
+            create_env_files
             setup_backend
             setup_frontend
             run_dev_servers

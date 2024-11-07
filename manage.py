@@ -4,6 +4,7 @@ import argparse
 import os
 import subprocess
 import sys
+import shutil
 
 # Color codes
 GREEN = '\033[0;32m'
@@ -11,16 +12,7 @@ YELLOW = '\033[1;33m'
 RED = '\033[0;31m'
 NC = '\033[0m'  # No Color
 
-def print_success(message):
-    print(f"{GREEN}{message}{NC}")
-
-def print_warning(message):
-    print(f"{YELLOW}{message}{NC}")
-
-def print_error(message):
-    print(f"{RED}{message}{NC}")
-
-def run_command(command, cwd=None, env=None):
+def run_command(command, cwd=None, env=None, capture_output=False):
     """Run a shell command with optional working directory and environment"""
     try:
         result = subprocess.run(
@@ -29,20 +21,18 @@ def run_command(command, cwd=None, env=None):
             check=True, 
             cwd=cwd, 
             env=env or os.environ.copy(),
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE, 
+            capture_output=capture_output,
             text=True
         )
-        print_success(result.stdout)
+        print(f"{GREEN}Command executed successfully: {command}{NC}")
         return result
     except subprocess.CalledProcessError as e:
-        print_error(f"Command failed: {e}")
-        print_error(f"STDOUT: {e.stdout}")
-        print_error(f"STDERR: {e.stderr}")
+        print(f"{RED}Command failed: {command}{NC}")
+        print(f"{RED}Error output: {e.stderr}{NC}")
         sys.exit(1)
 
 def setup_backend_env():
-    """Set up backend virtual environment"""
+    """Set up backend virtual environment and install dependencies"""
     os.chdir('backend')
     
     # Create virtual environment if not exists
@@ -55,7 +45,7 @@ def setup_backend_env():
     os.chdir('..')
 
 def run_migrations(action='upgrade'):
-    """Run database migrations"""
+    """Manage database migrations"""
     setup_backend_env()
     os.chdir('backend')
     
@@ -67,7 +57,7 @@ def run_migrations(action='upgrade'):
     }
     
     if action not in migration_commands:
-        print_error(f"Invalid migration action: {action}")
+        print(f"{RED}Invalid migration action: {action}{NC}")
         sys.exit(1)
     
     run_command(f'. venv/bin/activate && {migration_commands[action]}')
@@ -116,6 +106,30 @@ def docker_down():
     """Stop and remove Docker containers"""
     run_command('docker-compose down')
 
+def generate_env_files():
+    """Generate .env files from .env.example if they don't exist"""
+    for directory in ['frontend', 'backend']:
+        env_example = os.path.join(directory, '.env.example')
+        env_file = os.path.join(directory, '.env')
+        
+        if os.path.exists(env_example) and not os.path.exists(env_file):
+            shutil.copy(env_example, env_file)
+            print(f"{GREEN}Created {env_file} from {env_example}{NC}")
+
+def security_scan():
+    """Run security scans on dependencies"""
+    print(f"{YELLOW}Running security scans...{NC}")
+    
+    # Backend dependency scan
+    os.chdir('backend')
+    run_command('. venv/bin/activate && safety check')
+    os.chdir('..')
+    
+    # Frontend dependency scan
+    os.chdir('frontend')
+    run_command('npm audit')
+    os.chdir('..')
+
 def main():
     parser = argparse.ArgumentParser(description='DivergesApp Management Script')
     
@@ -135,7 +149,19 @@ def main():
     parser.add_argument('--docker', choices=['build', 'up', 'down', 'up-detached'], 
                         help='Docker management commands')
     
+    # Environment setup
+    parser.add_argument('--init', action='store_true', 
+                        help='Initialize project environment')
+    
+    # Security scan
+    parser.add_argument('--security-scan', action='store_true', 
+                        help='Run security dependency scans')
+    
     args = parser.parse_args()
+    
+    if args.init:
+        generate_env_files()
+        setup_backend_env()
     
     if args.migrate:
         run_migrations(args.migrate)
@@ -155,6 +181,9 @@ def main():
             docker_up(detached=True)
         elif args.docker == 'down':
             docker_down()
+    
+    if args.security_scan:
+        security_scan()
 
 if __name__ == '__main__':
     main()

@@ -13,20 +13,14 @@ DivergesApp is a comprehensive educational platform designed to facilitate learn
 
 ## Project Setup
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yourusername/DivergesApp.git
-cd DivergesApp
-```
-
-### 2. Firebase Configuration
+### 1. Firebase Configuration
 
 1. Create a Firebase project at [Firebase Console](https://console.firebase.google.com/)
 2. Go to Project Settings
 3. Navigate to Service Accounts
 4. Generate a new private key (download JSON)
 
-### 3. Environment Configuration
+### 2. Environment Configuration
 
 #### Frontend Environment
 ```bash
@@ -35,9 +29,9 @@ cp .env.example .env
 ```
 
 Edit `frontend/.env` and fill in your Firebase configuration:
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_API_KEY`: Web API Key from Firebase project settings
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`: Your Firebase project's auth domain
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`: Your Firebase project ID
 - Other Firebase-related variables
 
 #### Backend Environment
@@ -47,12 +41,12 @@ cp .env.example .env
 ```
 
 Edit `backend/.env` and configure:
-- `FIREBASE_PROJECT_ID`
-- `FIREBASE_PRIVATE_KEY` (from Firebase service account JSON)
-- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PROJECT_ID`: From Firebase project settings
+- `FIREBASE_PRIVATE_KEY`: From the downloaded service account JSON
+- `FIREBASE_CLIENT_EMAIL`: From the service account JSON
 - Database and other settings
 
-### 4. Running the Application
+### 3. Running the Application
 
 #### Option 1: Docker Deployment (Recommended)
 ```bash
@@ -84,6 +78,22 @@ npm run dev
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/api/docs
 
+## Firebase Setup Detailed Guide
+
+### Web App Configuration
+1. In Firebase Console, go to Project Settings
+2. Click "Add app" and choose Web
+3. Register app and copy configuration
+4. Enable Authentication methods (Email/Password, etc.)
+5. Set up Firestore or Realtime Database
+6. Configure Storage rules
+
+### Service Account
+1. Go to Project Settings > Service Accounts
+2. Generate new private key
+3. Download JSON file
+4. IMPORTANT: Keep this file secure and never commit it to version control
+
 ## Troubleshooting
 
 ### Common Issues
@@ -103,12 +113,6 @@ npm run dev
    # Clear Docker cache
    docker system prune -a
    ```
-
-### Debugging
-
-- Check Docker logs: `docker-compose logs`
-- Verify environment variables
-- Ensure Firebase credentials are correct
 
 ## Technology Stack
 

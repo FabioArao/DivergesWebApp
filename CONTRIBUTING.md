@@ -1,134 +1,153 @@
 # Contributing to DivergesApp
 
-## Welcome!
+## Welcome Contributors!
 
-We're thrilled that you're interested in contributing to DivergesApp. This document provides guidelines for contributing to the project.
+We're excited that you're interested in contributing to DivergesApp. This document provides guidelines for contributing to the project.
 
 ## Code of Conduct
 
-Please be respectful and considerate of others. Harassment and discrimination are not tolerated.
+Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing. We are committed to providing a welcoming and inspiring community for all.
 
 ## How to Contribute
 
 ### Reporting Bugs
 
 1. Check existing issues to ensure the bug hasn't been reported
-2. Use the issue template
+2. Use the bug report template when creating a new issue
 3. Provide detailed information:
    - Steps to reproduce
    - Expected behavior
    - Actual behavior
-   - Environment details
+   - Environment details (OS, Python/Node.js version, etc.)
 
 ### Feature Requests
 
 1. Check existing issues for similar requests
-2. Clearly describe the feature
-3. Explain the use case and potential benefits
+2. Use the feature request template
+3. Clearly describe:
+   - The problem you're solving
+   - Proposed solution
+   - Potential implementation approach
 
-## Development Process
+## Development Setup
 
 ### Prerequisites
 
+- Docker and Docker Compose
 - Python 3.10+
 - Node.js 18+
-- Docker
 - Firebase Account
 
-### Setup
+### Local Development
 
 1. Fork the repository
 2. Clone your fork
-3. Create a virtual environment
-4. Install dependencies
-5. Set up environment variables
-
+3. Create environment files
 ```bash
-# Backend setup
-cd backend
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Frontend setup
-cd ../frontend
-npm install
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 ```
 
-### Making Changes
+4. Set up Firebase configuration in both .env files
 
-1. Create a new branch
+5. Use the management script for setup
+```bash
+# Initialize project
+python manage.py --init
+
+# Run tests
+python manage.py --test all
+
+# Run linters
+python manage.py --lint all
+```
+
+### Docker Development
+```bash
+# Build and start containers
+python manage.py --docker up
+```
+
+## Coding Standards
+
+### Backend (Python)
+- Follow PEP 8 guidelines
+- Use type hints
+- Write docstrings for all functions
+- Use Black for formatting
+- Use Mypy for type checking
+
+### Frontend (TypeScript/React)
+- Follow React best practices
+- Use TypeScript with strict mode
+- Write clear, concise components
+- Use ESLint and Prettier
+- Write unit tests for components
+
+### Commit Guidelines
+- Use conventional commits
+- Prefix commits:
+  - `feat:` for new features
+  - `fix:` for bug fixes
+  - `docs:` for documentation changes
+  - `style:` for formatting changes
+  - `refactor:` for code restructuring
+  - `test:` for test-related changes
+  - `chore:` for maintenance tasks
+
+## Pull Request Process
+
+1. Create a feature branch
 ```bash
 git checkout -b feature/your-feature-name
 ```
 
 2. Make your changes
-   - Follow existing code style
-   - Add tests for new functionality
+   - Follow coding standards
+   - Add/update tests
    - Ensure all tests pass
 
 3. Commit your changes
 ```bash
 git add .
-git commit -m "Description of changes"
+git commit -m "feat: describe your feature"
 ```
 
-### Code Style
-
-#### Backend (Python)
-- Use Black for formatting
-- Follow PEP 8 guidelines
-- Type hints are required
-- Docstrings for all functions and classes
-
+4. Push to your fork
 ```bash
-# Format code
-black .
-# Type checking
-mypy .
-# Lint
-flake8
+git push origin feature/your-feature-name
 ```
 
-#### Frontend (TypeScript/React)
-- Use ESLint and Prettier
-- Follow React best practices
-- Use TypeScript with strict mode
+5. Open a Pull Request
+   - Use the PR template
+   - Describe changes clearly
+   - Link related issues
 
+## Code Review Process
+
+- All contributions require review
+- Maintainers will provide constructive feedback
+- Be open to suggestions and collaborative improvement
+
+## Testing
+
+### Backend Testing
 ```bash
-# Format and lint
-npm run lint
-npm run format
+# Run all backend tests
+python manage.py --test backend
+
+# Run specific test
+pytest backend/tests/specific_test.py
 ```
 
-### Testing
-
-#### Backend
-- Use pytest for testing
-- Aim for high test coverage
+### Frontend Testing
 ```bash
-pytest
+# Run all frontend tests
+python manage.py --test frontend
+
+# Run specific test
+npm test -- -t "specific test name"
 ```
-
-#### Frontend
-- Use Jest and React Testing Library
-```bash
-npm test
-```
-
-### Pull Request Process
-
-1. Ensure all tests pass
-2. Update documentation if needed
-3. Squash commits
-4. Use descriptive PR title and description
-5. Link to related issues
-
-### Review Process
-
-- PRs require review from maintainers
-- Be open to feedback
-- Discussions should be constructive
 
 ## Security
 
@@ -136,18 +155,23 @@ npm test
 - Report security issues privately
 - Use environment variables for secrets
 
-## Communication
+## Documentation
 
-- Join our Discord/Slack channel
-- Use GitHub issues for tracked discussions
-- Be patient and respectful
+- Update README if your changes affect setup/usage
+- Add/update docstrings and comments
+- Keep documentation clear and concise
 
 ## Financial Contributions
 
-Support the project via:
+Support the project:
 - GitHub Sponsors
 - Open Collective
 - Individual donations
+
+## Questions?
+
+- Open an issue
+- Join our community discussions
 
 ## Thank You!
 

@@ -67,6 +67,30 @@ Thumbs.db
 uploads/
 media/
 
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+.*.kate-swp
+.swp.*
+
+# Backup files
+*.orig
+
+# Security
+*.pem
+
 # Miscellaneous
 .git
 .gitignore
+
+# Local configuration
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Sensitive files
+**/config/secrets.py
+**/config/local_settings.py
