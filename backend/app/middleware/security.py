@@ -1,70 +1,82 @@
-from fastapi import Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from typing import Callable
-import time
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+from app.config.settings import settings
 import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
-
-def setup_cors(app):
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:3000"],  # Add your frontend URL
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-async def log_request_middleware(request: Request, call_next: Callable):
-    start_time = time.time()
-    response = None
-    
-    try:
+class SecurityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         response = await call_next(request)
-        process_time = time.time() - start_time
         
-        logger.info(
-            f"Path: {request.url.path} "
-            f"Method: {request.method} "
-            f"Status: {response.status_code} "
-            f"Duration: {process_time:.3f}s"
-        )
+        # Security Headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        
+        # Content Security Policy
+        if settings.is_production:
+            csp_directives = [
+                "default-src 'self'",
+                "img-src 'self' data: https:",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                "style-src 'self' 'unsafe-inline'",
+                "font-src 'self' data:",
+                f"connect-src 'self' {' '.join(settings.allowed_origins_list)}",
+                "frame-ancestors 'none'",
+                "base-uri 'self'",
+                "form-action 'self'"
+            ]
+            response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+        
+        # HSTS in production
+        if settings.is_production:
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # Cache Control
+        if request.url.path.startswith(("/api/static/", "/api/media/")):
+            response.headers["Cache-Control"] = "public, max-age=31536000"
+        else:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
         
         return response
-    except Exception as e:
-        logger.error(
-            f"Request failed: {str(e)} "
-            f"Path: {request.url.path} "
-            f"Method: {request.method}"
-        )
-        
-        if response is None:
-            raise HTTPException(
-                status_code=500,
-                detail="Internal server error"
-            )
-        return response
 
-async def verify_token_middleware(request: Request, call_next: Callable):
-    if request.url.path.startswith("/api/"):
-        if "authorization" not in request.headers:
-            raise HTTPException(
-                status_code=401,
-                detail="Authorization header missing"
-            )
-            
-        # Token verification logic will be handled in the routes
+class UploadSizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if request.method == "POST" and request.headers.get("content-type", "").startswith("multipart/form-data"):
+            content_length = request.headers.get("content-length")
+            if content_length:
+                content_length = int(content_length)
+                if content_length > settings.MAX_UPLOAD_SIZE:
+                    logger.warning(f"Upload size {content_length} exceeds maximum allowed size {settings.MAX_UPLOAD_SIZE}")
+                    return Response(
+                        content="File too large",
+                        status_code=413,
+                        media_type="text/plain"
+                    )
         
-    return await call_next(request)
+        return await call_next(request)
 
-def setup_middlewares(app):
-    app.middleware("http")(log_request_middleware)
-    app.middleware("http")(verify_token_middleware)
-    setup_cors(app)
+class FileTypeValidationMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        if request.method == "POST" and request.headers.get("content-type", "").startswith("multipart/form-data"):
+            form = await request.form()
+            for field_name, field_value in form.items():
+                if hasattr(field_value, "content_type"):
+                    if field_value.content_type not in settings.allowed_file_types_list:
+                        logger.warning(f"Invalid file type: {field_value.content_type}")
+                        return Response(
+                            content="Invalid file type",
+                            status_code=415,
+                            media_type="text/plain"
+                        )
+        
+        return await call_next(request)

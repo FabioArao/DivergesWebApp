@@ -1,5 +1,39 @@
+# Dependency directories
 node_modules
+npm-debug.log
+yarn-error.log
+
+# Next.js build output
 .next
-.git
+out
+
+# Environment files
+.env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Version control
+.git
+.gitignore
+
+# Development files
+README.md
+*.md
+
+# Logs
+logs
 *.log
+
+# Testing
+coverage
+.jest
+
+# IDE specific
+.vscode
+.idea
+
+# Miscellaneous
+.DS_Store
+*.pem

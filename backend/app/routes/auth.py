@@ -1,175 +1,216 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
-from firebase_admin import auth as firebase_auth
-from firebase_admin.auth import InvalidIdTokenError, ExpiredIdTokenError
-from ..dependencies import get_db
-from ..models.user import User, UserRole
-from ..schemas.auth import TokenSchema, UserResponse, ErrorResponse
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from ..middleware.security import limiter
+from app.database import get_db_session
+from app.config.firebase import verify_firebase_token
+from app.models.user import User, UserRole
+from app.schemas.auth import (
+    UserCreate, UserResponse, UserLogin, UserUpdate,
+    GuardianLinkRequest, StudentResponse, TeacherResponse,
+    GuardianResponse, ErrorResponse
+)
+from app.dependencies import (
+    get_current_user, get_admin_user, get_teacher_user,
+    get_guardian_user, get_student_access,
+    get_user_management_permission
+)
+from typing import List
 import logging
 
-# Configure logging
 logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserResponse, responses={400: {"model": ErrorResponse}})
-@limiter.limit("5/minute")
 async def register_user(
-    request: Request,
-    token_schema: TokenSchema,
-    db: Session = Depends(get_db)
+    user_data: UserCreate,
+    db: Session = Depends(get_db_session)
 ):
+    """Register a new user"""
     try:
         # Verify Firebase token
-        try:
-            decoded_token = firebase_auth.verify_id_token(token_schema.token)
-        except InvalidIdTokenError:
-            raise HTTPException(
-                status_code=400,
-                detail={"detail": "Invalid token", "code": "INVALID_TOKEN"}
-            )
-        except ExpiredIdTokenError:
-            raise HTTPException(
-                status_code=400,
-                detail={"detail": "Token expired", "code": "TOKEN_EXPIRED"}
-            )
-
-        firebase_uid = decoded_token["uid"]
-        email = decoded_token.get("email")
-
-        if not email:
-            raise HTTPException(
-                status_code=400,
-                detail={"detail": "Email not found in token", "code": "EMAIL_MISSING"}
-            )
-
+        decoded_token = verify_firebase_token(user_data.firebase_token)
+        firebase_uid = decoded_token['uid']
+        email = decoded_token['email']
+        
         # Check if user already exists
-        existing_user = db.query(User).filter(
-            (User.firebase_uid == firebase_uid) | (User.email == email)
-        ).first()
-
+        existing_user = db.query(User).filter(User.firebase_uid == firebase_uid).first()
         if existing_user:
-            if existing_user.firebase_uid == firebase_uid:
-                return existing_user
-
             raise HTTPException(
-                status_code=400,
-                detail={"detail": "Email already registered", "code": "EMAIL_EXISTS"}
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already registered"
             )
         
         # Create new user
-        new_user = User(
-            email=email,
+        user = User(
             firebase_uid=firebase_uid,
-            role=UserRole.STUDENT  # Default role
+            email=email,
+            full_name=user_data.full_name,
+            role=user_data.role,
+            phone_number=user_data.phone_number,
+            profile_picture=user_data.profile_picture,
+            grade_level=user_data.grade_level,
+            subjects=user_data.subjects
         )
         
-        try:
-            db.add(new_user)
-            db.commit()
-            db.refresh(new_user)
-            
-            logger.info(f"New user registered: {email}")
-            return new_user
-            
-        except SQLAlchemyError as e:
-            db.rollback()
-            logger.error(f"Database error during user registration: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail={"detail": "Database error", "code": "DB_ERROR"}
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error during registration: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail={"detail": "Internal server error", "code": "INTERNAL_ERROR"}
-        )
-
-@router.get("/me", response_model=UserResponse, responses={404: {"model": ErrorResponse}})
-@limiter.limit("60/minute")
-async def get_current_user(
-    request: Request,
-    token_schema: TokenSchema,
-    db: Session = Depends(get_db)
-):
-    try:
-        try:
-            decoded_token = firebase_auth.verify_id_token(token_schema.token)
-        except InvalidIdTokenError:
-            raise HTTPException(
-                status_code=400,
-                detail={"detail": "Invalid token", "code": "INVALID_TOKEN"}
-            )
-        except ExpiredIdTokenError:
-            raise HTTPException(
-                status_code=400,
-                detail={"detail": "Token expired", "code": "TOKEN_EXPIRED"}
-            )
-
-        user = db.query(User).filter(User.firebase_uid == decoded_token['uid']).first()
+        db.add(user)
+        db.commit()
+        db.refresh(user)
         
-        if not user:
-            raise HTTPException(
-                status_code=404,
-                detail={"detail": "User not found", "code": "USER_NOT_FOUND"}
-            )
-            
+        logger.info(f"New user registered: {user.email} with role {user.role}")
         return user
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Unexpected error in get_current_user: {str(e)}")
+        logger.error(f"Registration error: {str(e)}")
+        db.rollback()
         raise HTTPException(
-            status_code=500,
-            detail={"detail": "Internal server error", "code": "INTERNAL_ERROR"}
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
 
-@router.put("/update-role", response_model=UserResponse, responses={400: {"model": ErrorResponse}})
-@limiter.limit("5/minute")
-async def update_user_role(
-    request: Request,
-    token_schema: TokenSchema,
-    new_role: UserRole,
-    db: Session = Depends(get_db)
+@router.post("/login", response_model=UserResponse, responses={401: {"model": ErrorResponse}})
+async def login(
+    login_data: UserLogin,
+    db: Session = Depends(get_db_session)
 ):
+    """Login user"""
     try:
-        decoded_token = firebase_auth.verify_id_token(token_schema.token)
-        user = db.query(User).filter(User.firebase_uid == decoded_token['uid']).first()
+        # Verify Firebase token
+        decoded_token = verify_firebase_token(login_data.firebase_token)
         
+        # Get user from database
+        user = db.query(User).filter(User.firebase_uid == decoded_token['uid']).first()
         if not user:
             raise HTTPException(
-                status_code=404,
-                detail={"detail": "User not found", "code": "USER_NOT_FOUND"}
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not registered"
             )
             
-        user.role = new_role
-        
-        try:
-            db.commit()
-            db.refresh(user)
-            logger.info(f"Role updated for user {user.email}: {new_role}")
-            return user
-            
-        except SQLAlchemyError as e:
-            db.rollback()
-            logger.error(f"Database error during role update: {str(e)}")
+        if not user.is_active:
             raise HTTPException(
-                status_code=500,
-                detail={"detail": "Database error", "code": "DB_ERROR"}
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is disabled"
             )
-            
-    except HTTPException:
-        raise
+        
+        logger.info(f"User logged in: {user.email}")
+        return user
+        
     except Exception as e:
-        logger.error(f"Unexpected error in update_user_role: {str(e)}")
+        logger.error(f"Login error: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail={"detail": "Internal server error", "code": "INTERNAL_ERROR"}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
         )
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """Get current user information"""
+    return current_user
+
+@router.put("/me", response_model=UserResponse)
+async def update_current_user(
+    user_data: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    """Update current user information"""
+    try:
+        for field, value in user_data.dict(exclude_unset=True).items():
+            setattr(current_user, field, value)
+        
+        db.commit()
+        db.refresh(current_user)
+        return current_user
+        
+    except Exception as e:
+        logger.error(f"Update user error: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+@router.get("/students", response_model=List[StudentResponse])
+async def get_accessible_students(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    """Get list of students accessible to current user"""
+    if current_user.is_admin:
+        students = db.query(User).filter(User.role == UserRole.STUDENT).all()
+    elif current_user.is_teacher:
+        students = current_user.students_as_teacher
+    elif current_user.is_guardian:
+        students = current_user.students_as_guardian
+    elif current_user.is_student:
+        students = [current_user]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view students"
+        )
+    
+    return students
+
+@router.post("/link-guardian", status_code=status.HTTP_201_CREATED)
+async def link_guardian_to_student(
+    link_data: GuardianLinkRequest,
+    _: bool = Depends(get_user_management_permission),
+    db: Session = Depends(get_db_session)
+):
+    """Link a guardian to a student"""
+    student = db.query(User).filter(User.id == link_data.student_id).first()
+    guardian = db.query(User).filter(User.id == link_data.guardian_id).first()
+    
+    if not student or not guardian:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student or guardian not found"
+        )
+    
+    if student.role != UserRole.STUDENT or guardian.role != UserRole.GUARDIAN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role combination"
+        )
+    
+    guardian.students_as_guardian.append(student)
+    db.commit()
+    
+    return {"message": "Guardian linked to student successfully"}
+
+@router.get("/teachers", response_model=List[TeacherResponse])
+async def get_teachers(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session)
+):
+    """Get list of teachers"""
+    teachers = db.query(User).filter(User.role == UserRole.TEACHER).all()
+    return teachers
+
+@router.get("/guardians", response_model=List[GuardianResponse])
+async def get_guardians(
+    _: User = Depends(get_admin_user),
+    db: Session = Depends(get_db_session)
+):
+    """Get list of guardians (admin only)"""
+    guardians = db.query(User).filter(User.role == UserRole.GUARDIAN).all()
+    return guardians
+
+@router.get("/student/{student_id}", response_model=StudentResponse)
+async def get_student_info(
+    student_id: str,
+    _: bool = Depends(get_student_access),
+    db: Session = Depends(get_db_session)
+):
+    """Get specific student information"""
+    student = db.query(User).filter(
+        User.id == student_id,
+        User.role == UserRole.STUDENT
+    ).first()
+    
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found"
+        )
+    
+    return student

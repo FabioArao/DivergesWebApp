@@ -25,7 +25,7 @@ target_metadata = Base.metadata
 def get_url():
   return os.getenv(
       "DATABASE_URL",
-      "postgressql://user:password@db:5432/divergesapp"
+      "postgresql://user:password@db:5432/divergesapp"
   )
 
 def run_migrations_offline() -> None:

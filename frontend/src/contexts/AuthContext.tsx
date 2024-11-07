@@ -1,126 +1,181 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { 
-  User,
-  onAuthStateChanged,
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  User as FirebaseUser,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  onIdTokenChanged
-} from "firebase/auth";
-import { auth } from "../config/firebase";
+  onAuthStateChanged,
+  getAuth,
+} from 'firebase/auth';
+import { app } from '../config/firebase';
+
+export type UserRole = 'student' | 'teacher' | 'guardian' | 'admin';
+
+interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: UserRole;
+  firebase_uid: string;
+  is_active: boolean;
+  profile_picture?: string;
+  grade_level?: string;
+  subjects?: string;
+}
 
 interface AuthContextType {
   user: User | null;
+  firebaseUser: FirebaseUser | null;
   loading: boolean;
   error: string | null;
-  token: string | null;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  clearError: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  error: null,
-  token: null,
-  signOut: async () => {},
-});
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
 
-  // Handle token refresh
+  const auth = getAuth(app);
+
   useEffect(() => {
-    const unsubscribe = onIdTokenChanged(auth, async (user) => {
-      if (user) {
-        try {
-          const token = await user.getIdToken();
-          setToken(token);
-          // Store token in secure httpOnly cookie via API call
-          await fetch('/api/auth/session', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ token }),
-          });
-        } catch (error) {
-          console.error('Error refreshing token:', error);
-          setError('Failed to refresh authentication token');
-        }
-      } else {
-        setToken(null);
-        // Clear token cookie via API call
-        await fetch('/api/auth/session', { method: 'DELETE' });
-      }
-    });
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setFirebaseUser(firebaseUser);
+      setLoading(true);
 
-    return () => unsubscribe();
-  }, []);
-
-  // Handle auth state changes
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
-        if (user) {
-          // Get fresh token
-          const token = await user.getIdToken(true);
-          setToken(token);
-          setUser(user);
+        if (firebaseUser) {
+          // Get ID token for backend authentication
+          const idToken = await firebaseUser.getIdToken();
+
+          // Fetch user data from backend
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${idToken}`
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch user data');
+          }
+
+          const userData: User = await response.json();
+          setUser(userData);
         } else {
           setUser(null);
-          setToken(null);
         }
-      } catch (error) {
-        console.error('Auth state change error:', error);
-        setError('Authentication error occurred');
+      } catch (err) {
+        console.error('Auth state change error:', err);
+        setError(err instanceof Error ? err.message : 'Authentication error');
+        setUser(null);
       } finally {
         setLoading(false);
       }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [auth]);
 
-  // Sign out function
-  const signOut = useCallback(async () => {
+  const signIn = async (email: string, password: string) => {
     try {
+      setLoading(true);
+      setError(null);
+
+      // Sign in with Firebase
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const idToken = await userCredential.user.getIdToken();
+
+      // Login with backend
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Login failed');
+      }
+
+      const userData: User = await response.json();
+      setUser(userData);
+    } catch (err) {
+      console.error('Sign in error:', err);
+      setError(err instanceof Error ? err.message : 'Sign in failed');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      setLoading(true);
       await firebaseSignOut(auth);
       setUser(null);
-      setToken(null);
-      // Clear session cookie
-      await fetch('/api/auth/session', { method: 'DELETE' });
-    } catch (error) {
-      console.error('Sign out error:', error);
-      setError('Failed to sign out');
+    } catch (err) {
+      console.error('Sign out error:', err);
+      setError(err instanceof Error ? err.message : 'Sign out failed');
+      throw err;
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // Reset error after 5 seconds
-  useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(null), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
+  const clearError = () => setError(null);
+
+  const value = {
+    user,
+    firebaseUser,
+    loading,
+    error,
+    signIn,
+    signOut,
+    clearError
+  };
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, token, signOut }}>
-      {!loading ? (
-        children
-      ) : (
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900" />
-        </div>
-      )}
+    <AuthContext.Provider value={value}>
+      {!loading && children}
     </AuthContext.Provider>
   );
-}
+};
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+// Custom hooks for role-based access
+export const useIsStudent = () => {
+  const { user } = useAuth();
+  return user?.role === 'student';
+};
+
+export const useIsTeacher = () => {
+  const { user } = useAuth();
+  return user?.role === 'teacher';
+};
+
+export const useIsGuardian = () => {
+  const { user } = useAuth();
+  return user?.role === 'guardian';
+};
+
+export const useIsAdmin = () => {
+  const { user } = useAuth();
+  return user?.role === 'admin';
+};
+
+export const useAuthorized = (allowedRoles: UserRole[]) => {
+  const { user } = useAuth();
+  return user ? allowedRoles.includes(user.role) : false;
 };

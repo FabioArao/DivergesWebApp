@@ -1,84 +1,117 @@
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { useAuth, UserRole } from '@/contexts/AuthContext';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRoles?: string[];
+  allowedRoles?: UserRole[];
+  redirectTo?: string;
 }
 
-export default function ProtectedRoute({ 
-  children, 
-  requiredRoles = [] 
-}: ProtectedRouteProps) {
-  const { user, loading, error } = useAuth();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
+  children,
+  allowedRoles = [],
+  redirectTo = '/login'
+}) => {
+  const { user, loading } = useAuth();
   const router = useRouter();
-  const [hasRequiredRole, setHasRequiredRole] = useState(false);
-  const [checkingRole, setCheckingRole] = useState(false);
 
   useEffect(() => {
-    async function checkUserRole() {
-      if (user && requiredRoles.length > 0) {
-        setCheckingRole(true);
-        try {
-          const tokenResult = await user.getIdTokenResult();
-          const userRole = tokenResult.claims.role as string;
-          setHasRequiredRole(userRole ? requiredRoles.includes(userRole) : false);
-        } catch (error) {
-          console.error('Error checking user role:', error);
-          setHasRequiredRole(false);
-        }
-        setCheckingRole(false);
-      }
-    }
-
     if (!loading) {
       if (!user) {
-        router.push('/login');
-      } else if (requiredRoles.length > 0) {
-        checkUserRole();
+        // Not authenticated
+        router.push(redirectTo);
+      } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+        // Not authorized for this role
+        switch (user.role) {
+          case 'student':
+            router.push('/student/dashboard');
+            break;
+          case 'teacher':
+            router.push('/teacher/dashboard');
+            break;
+          case 'guardian':
+            router.push('/guardian/dashboard');
+            break;
+          case 'admin':
+            router.push('/admin/dashboard');
+            break;
+          default:
+            router.push('/');
+        }
       }
     }
-  }, [user, loading, router, requiredRoles]);
+  }, [user, loading, allowedRoles, redirectTo, router]);
 
-  // Show loading spinner while checking authentication or role
-  if (loading || checkingRole) {
+  // Show nothing while checking authentication
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
   }
 
-  // Show error message if authentication fails
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error}</span>
-        </div>
-      </div>
-    );
+  // Not authenticated or not authorized
+  if (!user || (allowedRoles.length > 0 && !allowedRoles.includes(user.role))) {
+    return null;
   }
 
-  // If roles are required, check if user has required role
-  if (requiredRoles.length > 0 && !hasRequiredRole) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Unauthorized: </strong>
-          <span className="block sm:inline">You don&apos;t have permission to access this page.</span>
-        </div>
-      </div>
-    );
-  }
+  // Authenticated and authorized
+  return <>{children}</>;
+};
 
-  // If user is authenticated and has required role (if any), render children
-  if (user && (!requiredRoles.length || hasRequiredRole)) {
-    return <>{children}</>;
-  }
+// Higher-order components for specific roles
+export const StudentRoute: React.FC<Omit<ProtectedRouteProps, 'allowedRoles'>> = (props) => (
+  <ProtectedRoute {...props} allowedRoles={['student', 'admin']} />
+);
 
-  // Return null while redirecting
-  return null;
-}
+export const TeacherRoute: React.FC<Omit<ProtectedRouteProps, 'allowedRoles'>> = (props) => (
+  <ProtectedRoute {...props} allowedRoles={['teacher', 'admin']} />
+);
+
+export const GuardianRoute: React.FC<Omit<ProtectedRouteProps, 'allowedRoles'>> = (props) => (
+  <ProtectedRoute {...props} allowedRoles={['guardian', 'admin']} />
+);
+
+export const AdminRoute: React.FC<Omit<ProtectedRouteProps, 'allowedRoles'>> = (props) => (
+  <ProtectedRoute {...props} allowedRoles={['admin']} />
+);
+
+// Custom hook for checking route access
+export const useRouteAccess = (allowedRoles: UserRole[] = []) => {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    } else if (
+      !loading &&
+      user &&
+      allowedRoles.length > 0 &&
+      !allowedRoles.includes(user.role)
+    ) {
+      switch (user.role) {
+        case 'student':
+          router.push('/student/dashboard');
+          break;
+        case 'teacher':
+          router.push('/teacher/dashboard');
+          break;
+        case 'guardian':
+          router.push('/guardian/dashboard');
+          break;
+        case 'admin':
+          router.push('/admin/dashboard');
+          break;
+        default:
+          router.push('/');
+      }
+    }
+  }, [user, loading, allowedRoles, router]);
+
+  return { isAllowed: user && allowedRoles.includes(user.role), loading };
+};
+
+export default ProtectedRoute;
